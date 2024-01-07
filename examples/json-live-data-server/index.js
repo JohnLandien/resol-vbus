@@ -1,13 +1,10 @@
 /*! resol-vbus | Copyright (c) 2013-present, Daniel Wippermann | MIT license */
 
-const fs = require('fs');
+//      const fs = require('fs');
 const os = require('os');
 const path = require('path');
-
-
 const express = require('express');
 const winston = require('winston');
-
 
 const {
     DLxJsonConverter,
@@ -17,7 +14,7 @@ const {
     Specification,
     SerialConnection,
     TcpConnection,
-    TextConverter,
+    // TextConverter,
     VBusRecordingConverter,
     utils: {
         promisify,
@@ -27,6 +24,12 @@ const {
 
 const config = require('./config');
 
+config.packetFieldNameMap = {};
+for (const key in config.computeActions) {
+    if ({}.propertyIsEnumerable.call(config.computeActions[key], 'resolId')) config.packetFieldNameMap[config.computeActions[key].resolId] = key;
+}
+console.log(config.packetFieldNameMap);
+console.log(config.computeActions);
 
 const logger = winston.createLogger({
     transports: [
@@ -84,7 +87,9 @@ async function generateJsonDataV1() {
     const packetFields = spec.getPacketFieldsForHeaders(headerSet.getSortedHeaders());
 
     const data = packetFields.map((pf) => {
+
         let { id, name, rawValue } = pf;
+
         if (config.packetFieldNameMap && config.packetFieldNameMap [id]) {
             name = config.packetFieldNameMap [id];
         }
@@ -95,17 +100,63 @@ async function generateJsonDataV1() {
             rawValue,
         };
     });
-
     return JSON.stringify(data, null, 4);
 }
 
+async function generateBerkmeer() {
+    const packetFields = spec.getPacketFieldsForHeaders(headerSet.getSortedHeaders());
+
+    const data = packetFields.map((pf) => {
+        let { id, name } = pf;
+
+        if (config.packetFieldNameMap && config.packetFieldNameMap[id]) {
+            name = config.packetFieldNameMap[id];
+        } else {
+            name = '';
+        }
+
+        if (name !== '') {
+            return {
+                name,
+                textValue: pf.formatTextValue('None')
+            };
+        } else { return null; }
+    });
+
+    return JSON.stringify(data.filter(element => element !== null), null, 4);
+}
+
+async function generateBerkmeerOutput() {
+    const packetFields = spec.getPacketFieldsForHeaders(headerSet.getSortedHeaders());
+
+    const data = packetFields.map((pf) => {
+        let { id, name } = pf;
+
+
+        if (config.packetFieldNameMap && config.packetFieldNameMap[id]) {
+
+            name = config.packetFieldNameMap[id];
+        } else {
+            name = '';
+        }
+
+        if (name.includes('Pump') || name.includes('Valve')) {
+            return {
+                name,
+                textValue: pf.formatTextValue('None')
+            };
+        } else { return null; }
+    });
+
+    return JSON.stringify(data.filter(element => element !== null), null, 4);
+}
 
 async function generateJsonDataV2() {
     const packetFields = spec.getPacketFieldsForHeaders(headerSet.getSortedHeaders());
 
     const data = packetFields.map((pf) => {
         let { id, name, rawValue } = pf;
-        if (config.packetFieldNameMap && config.packetFieldNameMap [id]) {
+        if (config.packetFieldNameMap && config.packetFieldNameMap[id]) {
             name = config.packetFieldNameMap [id];
         }
 
@@ -130,8 +181,8 @@ async function generateJsonDataV3() {
 
     const data = packetFields.map((pf) => {
         let { id, name, rawValue } = pf;
-        if (config.packetFieldNameMap && config.packetFieldNameMap [id]) {
-            name = config.packetFieldNameMap [id];
+        if (config.packetFieldNameMap && config.packetFieldNameMap[id]) {
+            name = config.packetFieldNameMap[id];
         }
 
         const { unitCode, unitFamily, unitText } = pf.packetFieldSpec.type.unit;
@@ -347,7 +398,7 @@ const knownSensorConversionMap = new Map([
     [ 'temperaturePt1000', function(body) {
         const { value } = body;
         if (typeof value !== 'number') {
-            throw new Error(`Malformed value`);
+            throw new Error('Malformed value');
         }
         // Source: https://de.wikipedia.org/wiki/Widerstandsthermometer#Platin
         return 1000 * (1 + 3.9083e-3 * value - 5.775e-7 * value * value);
@@ -357,7 +408,7 @@ const knownSensorConversionMap = new Map([
         if (typeof offset !== 'number') {
             throw new Error('Malformed offset');
         } else if ((offset < -30) || (offset > 30)) {
-            throw new Error(`Invalid offset`)
+            throw new Error('Invalid offset');
         } else if (typeof mode !== 'string') {
             throw new Error('Malformed mode');
         }
@@ -369,7 +420,7 @@ const knownSensorConversionMap = new Map([
         case 'summer': modeResistor = 1200; break;
         case 'off': modeResistor = 1800; break;
         default:
-            throw new Error(`Invalid mode`);
+            throw new Error('Invalid mode');
         }
 
         let offsetResistor;
@@ -400,41 +451,41 @@ async function generateEmSimulatorSensorResponse(requestParams, requestBody) {
     if (isNumberString(subAddress)) {
         subAddress = +subAddress;
     } else {
-        throw new Error(`Malformed subAddress`);
+        throw new Error('Malformed subAddress');
     }
 
     if (isNumberString(sensorNr)) {
         sensorNr = +sensorNr;
     } else {
-        throw new Error(`Malformed sensorNr`);
+        throw new Error('Malformed sensorNr');
     }
 
     let convertSensorValue;
     if (knownSensorConversionMap.has(sensorType)) {
         convertSensorValue = knownSensorConversionMap.get(sensorType);
     } else {
-        throw new Error(`Unknown sensorType`);
+        throw new Error('Unknown sensorType');
     }
 
     const state = emSimulatorStates.find(state => state.subAddress === subAddress);
     if (!state) {
-        throw new Error(`Unknown subAddress`);
+        throw new Error('Unknown subAddress');
     }
 
     if ((sensorNr < 1) || (sensorNr > state.sensorValues.length)) {
-        throw new Error(`Invalid sensorNr`);
+        throw new Error('Invalid sensorNr');
     }
 
     const resistor = convertSensorValue(requestBody);
     if (typeof resistor !== 'number') {
-        throw new Error(`Unable to convert value to number`);
+        throw new Error('Unable to convert value to number');
     } else if (!Number.isFinite(resistor)) {
-        throw new Error(`Converted sensor is not a finite number`);
+        throw new Error('Converted sensor is not a finite number');
     }
 
     const rawResistor = Math.round(resistor * 1000);
     if ((rawResistor < 0) || (rawResistor > 0xFFFFFFFF)) {
-        throw new Error(`Sensor value is out of range`);
+        throw new Error('Sensor value is out of range');
     }
 
     state.sensorValues [sensorNr - 1] = rawResistor;
@@ -452,22 +503,22 @@ async function generateEmSimulatorRelayResponse(requestParams) {
     if (isNumberString(subAddress)) {
         subAddress = +subAddress;
     } else {
-        throw new Error(`Malformed subAddress`);
+        throw new Error('Malformed subAddress');
     }
 
     if (isNumberString(relayNr)) {
         relayNr = +relayNr;
     } else {
-        throw new Error(`Malformed relayNr`);
+        throw new Error('Malformed relayNr');
     }
 
     const state = emSimulatorStates.find(state => state.subAddress === subAddress);
     if (!state) {
-        throw new Error(`Unknown subAddress`);
+        throw new Error('Unknown subAddress');
     }
 
     if ((relayNr < 1) || (relayNr > state.relayValues.length)) {
-        throw new Error(`Invalid relayNr`);
+        throw new Error('Invalid relayNr');
     }
 
     const [ value1, time1, value2, time2 ] = state.relayValues [relayNr - 1];
@@ -485,11 +536,11 @@ async function generateEmSimulatorRelayResponse(requestParams) {
 
 
 async function writeHeaderSet(filename) {
-    logger.debug('HeaderSet complete');
+    //  logger.debug('HeaderSet complete');
 
-    const data = await generateJsonDataV1();
+    //  const data = await generateJsonDataV1();
 
-    await promisify(cb => fs.writeFile(filename, data, cb));
+    // await promisify(cb => fs.writeFile(filename, data, cb));
 }
 
 
@@ -570,6 +621,18 @@ async function main(options) {
     app.get('/api/v1/live-data', (req, res) => {
         wrapAsyncJsonRequestHandler(res, () => {
             return generateJsonDataV1();
+        });
+    });
+
+    app.get('/berkmeer', (req, res) => {
+        wrapAsyncJsonRequestHandler(res, () => {
+            return generateBerkmeer();
+        });
+    });
+
+    app.get('/output', (req, res) => {
+        wrapAsyncJsonRequestHandler(res, () => {
+            return generateBerkmeerOutput();
         });
     });
 
@@ -679,50 +742,50 @@ async function main(options) {
     });
 
     if (config.textLoggingInterval) {
-        let currentDatecode = null;
+        // let currentDatecode = null;
 
-        let currentConverter = null;
+        // let currentConverter = null;
 
-        const onHeaderSet = async (headerSet) => {
-            const datecode = spec.i18n.moment(headerSet.timestamp).format('YYYYMMDD');
-            if (currentDatecode !== datecode) {
-                currentDatecode = datecode;
+        // const onHeaderSet = async (headerSet) => {
+        //     const datecode = spec.i18n.moment(headerSet.timestamp).format('YYYYMMDD');
+        //     if (currentDatecode !== datecode) {
+        //         currentDatecode = datecode;
 
-                if (currentConverter) {
-                    currentConverter.finish();
-                    currentConverter = null;
-                }
+        //         if (currentConverter) {
+        //             currentConverter.finish();
+        //             currentConverter = null;
+        //         }
 
-                const filename = path.resolve(config.textLoggingPath, datecode + '.csv');
+        //         //  const filename = path.resolve(config.textLoggingPath, datecode + '.csv');
 
-                const file = fs.createWriteStream(filename, { flags: 'a' });
+        //         //  const file = fs.createWriteStream(filename, { flags: 'a' });
 
-                const options = Object.assign({}, config.textLoggingOptions, {
-                    specification: spec,
-                });
+        //         const options = Object.assign({}, config.textLoggingOptions, {
+        //             specification: spec,
+        //         });
 
-                const converter = new TextConverter(options);
-                converter.pipe(file);
+        //         const converter = new TextConverter(options);
+        //         converter.pipe(file);
 
-                currentConverter = converter;
-            }
+        //         currentConverter = converter;
+        //     }
 
-            if (currentConverter) {
-                currentConverter.convertHeaderSet(headerSet);
-            }
-        };
+        //     if (currentConverter) {
+        //         currentConverter.convertHeaderSet(headerSet);
+        //     }
+        // };
 
-        logger.debug('Starting text logging');
+        // logger.debug('Starting text logging');
 
-        const hsc = new HeaderSetConsolidator({
-            interval: config.textLoggingInterval,
-        });
+        // const hsc = new HeaderSetConsolidator({
+        //     interval: config.textLoggingInterval,
+        // });
 
-        hsc.on('headerSet', () => {
-            onHeaderSet(textHeaderSetConsolidator);
-        });
+        // hsc.on('headerSet', () => {
+        //     onHeaderSet(textHeaderSetConsolidator);
+        // });
 
-        hsc.startTimer();
+        // hsc.startTimer();
     }
 
     await connection.connect();

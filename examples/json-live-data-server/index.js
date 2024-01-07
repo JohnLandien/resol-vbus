@@ -22,7 +22,7 @@ const {
 } = require('../resol-vbus');
 
 
-const config = require('./config');
+const config = require('./config.js');
 
 config.packetFieldNameMap = {};
 for (const key in config.computeActions) {

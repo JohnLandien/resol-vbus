@@ -126,6 +126,13 @@ const config = {
             'resolId' : '00_0010_7E11_10_0100_002_2_0',
             'resolHw' : 'S2',
         },
+        'I_House_Outlet_Temp' : {
+            'type': 'input',
+            'source' : 'resol',
+            'currentValue' : '',
+            'resolId' : '00_0010_7E11_10_0100_004_2_0',
+            'resolHw' : 'S3',
+        },
         'I_Tank_SWW_Temp_Middle' : {
             'type': 'input',
             'source' : 'resol',
